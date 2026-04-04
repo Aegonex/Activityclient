@@ -3,7 +3,8 @@ import { DiscordSDK } from '@discord/embedded-app-sdk'
 import api from './api/client'
 import ReelSpinner from './components/ReelSpinner'
 import TopUpModal from './components/TopUpModal'
-import { playTick, playWin, playRareWin } from './utils/sound'
+import Collection from './components/Collection'
+import { playTick, playWinByTier } from './utils/sound'
 
 const ITEM_WIDTH = 88   // w-[5.5rem] = 88px
 const ITEM_GAP = 8      // gap-2 = 8px
@@ -98,11 +99,6 @@ function buildPreviewItems(allRoles) {
   return Array.from({ length: REEL_SIZE }, (_, index) => allRoles[index % allRoles.length])
 }
 
-function isRareTier(tierName = '') {
-  const normalized = tierName.toLowerCase()
-  return ['legendary', 'epic', 'mythic', 'rare'].some((tier) => normalized.includes(tier))
-}
-
 function formatRollTime(date) {
   return new Intl.DateTimeFormat('th-TH', {
     hour: '2-digit',
@@ -131,20 +127,6 @@ function WalletIcon() {
         strokeWidth="1.6"
       />
       <circle cx="16.5" cy="13" r="1.25" fill="currentColor" />
-    </svg>
-  )
-}
-
-function GiftIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 text-amber-300">
-      <path
-        d="M4 10h16v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-9Zm0 0V7.5A1.5 1.5 0 0 1 5.5 6H18.5A1.5 1.5 0 0 1 20 7.5V10M12 6v15M8.5 6c-1.38 0-2.5-.9-2.5-2s1.12-2 2.5-2C10.43 2 12 6 12 6s-2.12 0-3.5 0Zm7 0C16.88 6 18 5.1 18 4s-1.12-2-2.5-2C14.12 2 12 6 12 6s2.12 0 3.5 0Z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
     </svg>
   )
 }
@@ -233,6 +215,7 @@ function App() {
   const [rollHistory, setRollHistory] = useState([])
   const [showTopUp, setShowTopUp] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [activeTab, setActiveTab] = useState('gacha') // gacha | collection | topup
 
   const wrapperRef = useRef(null)
   const reelTrackRef = useRef(null)
@@ -243,7 +226,8 @@ function App() {
   const avatarUrl = getAvatarUrl(auth?.user)
   const reelItems = spinnerItems.length > 0 ? spinnerItems : buildPreviewItems(allRoles)
   const showResultModal = Boolean(result)
-  const rareResult = isRareTier(result?.tier?.name)
+  const resultTier = (result?.tier?.name || 'common').toLowerCase()
+  const particleCount = resultTier === 'legendary' ? 24 : resultTier === 'epic' ? 14 : resultTier === 'rare' ? 8 : 0
 
   function stopSpinnerAnimation() {
     if (spinTimeoutRef.current) {
@@ -268,7 +252,7 @@ function App() {
     void track.offsetHeight
   }
 
-  async function animateSpinner(isRare) {
+  async function animateSpinner(tierName) {
     stopSpinnerAnimation()
     resetReelPosition()
 
@@ -325,12 +309,8 @@ function App() {
         if (tickRafId) cancelAnimationFrame(tickRafId)
         setIsSpinning(false)
 
-        // เสียง win
-        if (isRare) {
-          playRareWin()
-        } else {
-          playWin()
-        }
+        // เสียง win ตาม tier
+        playWinByTier(tierName)
 
         resolve()
       }, SPIN_DURATION)
@@ -475,7 +455,7 @@ function App() {
           requestAnimationFrame(resolve)
         })
       })
-      await animateSpinner(isRareTier(tier?.name))
+      await animateSpinner(tier?.name)
 
       setResult({ role, tier })
 
@@ -528,145 +508,172 @@ function App() {
     <main className="safe-screen flex h-screen flex-col overflow-hidden bg-[#23272a] pt-[calc(0.75rem+10px)] text-white">
       <div className="mx-auto flex h-full w-full max-w-sm flex-col">
         <header className="border-b border-white/8 px-4 pb-3 pt-[calc(1.25rem+10px)]">
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-3 rounded-[22px] bg-white/5 px-3 py-3 ring-1 ring-white/8">
-              <div className="h-12 w-12 shrink-0 overflow-hidden rounded-2xl bg-white/8 ring-1 ring-white/10">
-                {avatarUrl ? (
-                  <img className="h-full w-full object-cover" src={avatarUrl} alt={displayName} />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-[10px] text-white/50">
-                    ไม่มี
-                  </div>
-                )}
-              </div>
+          <div className="flex items-center gap-3">
+            <div className="h-11 w-11 shrink-0 overflow-hidden rounded-2xl bg-white/8 ring-1 ring-white/10">
+              {avatarUrl ? (
+                <img className="h-full w-full object-cover" src={avatarUrl} alt={displayName} />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-[10px] text-white/50">
+                  ?
+                </div>
+              )}
+            </div>
 
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-lg font-bold leading-tight text-white sm:text-xl">
-                  {displayName}
-                </p>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-bold leading-tight text-white">
+                {displayName}
+              </p>
+              <div className="mt-0.5 flex items-center gap-3 text-[11px] text-white/45">
+                <span>{rollHistory.length} สุ่ม</span>
+                <span>{new Set(rollHistory.map(e => e.role?.id ?? e.role?.name)).size} ยศ</span>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-2xl bg-white/6 px-3 py-2 ring-1 ring-white/8">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-white/55">
-                    <WalletIcon />
-                    <span>ยอดเงิน</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleRefreshBalance}
-                    disabled={refreshing}
-                    className="flex h-6 w-6 items-center justify-center rounded-full bg-white/8 text-xs text-white/50 transition hover:bg-white/15 disabled:opacity-40"
-                    title="รีเฟรชยอดเงิน"
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`}>
-                      <path d="M4 12a8 8 0 0 1 14.93-4M20 12a8 8 0 0 1-14.93 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      <path d="M20 4v4h-4M4 20v-4h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
-                </div>
-                <p className="mt-2 text-lg font-bold text-white">{balance}</p>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 rounded-xl bg-white/6 px-2.5 py-1.5 ring-1 ring-white/8">
+                <WalletIcon />
+                <span className="text-sm font-bold text-white">{balance}</span>
                 <button
                   type="button"
-                  onClick={() => setShowTopUp(true)}
-                  className="mt-1 w-full rounded-lg bg-emerald-500/20 py-1 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/30"
+                  onClick={handleRefreshBalance}
+                  disabled={refreshing}
+                  className="ml-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-white/8 text-white/50 transition hover:bg-white/15 disabled:opacity-40"
                 >
-                  + เติมเงิน
+                  <svg viewBox="0 0 24 24" fill="none" className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`}>
+                    <path d="M4 12a8 8 0 0 1 14.93-4M20 12a8 8 0 0 1-14.93 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M20 4v4h-4M4 20v-4h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
                 </button>
               </div>
-
-              <div className="rounded-2xl bg-white/6 px-3 py-2 ring-1 ring-white/8">
-                <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-white/55">
-                  <GiftIcon />
-                  <span>สุ่มฟรี</span>
-                </div>
-                <p className="mt-2 text-sm font-semibold text-white">
-                  {canRoll ? 'พร้อมสุ่มฟรี' : 'ใช้สิทธิ์แล้ว'}
-                </p>
-              </div>
             </div>
+          </div>
+
+          {/* Tab bar */}
+          <div className="mt-3 flex gap-1 rounded-xl bg-white/5 p-1 ring-1 ring-white/8">
+            {[
+              { id: 'gacha', label: 'สุ่มยศ' },
+              { id: 'collection', label: 'คลัง' },
+              { id: 'topup', label: 'เติมเงิน' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${
+                  activeTab === tab.id
+                    ? 'bg-white/10 text-white shadow-sm'
+                    : 'text-white/45 hover:text-white/70'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
         </header>
 
         <section className="hide-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4 pt-3">
-          <div className="flex min-h-0 flex-1 flex-col gap-3">
-            <ReelSpinner
-              wrapperRef={wrapperRef}
-              reelTrackRef={reelTrackRef}
-              reelItems={reelItems}
-              trackOffset={trackOffset}
-              isSpinning={isSpinning}
-              status={status}
-              freeRollDisabled={freeRollDisabled}
-              paidRollDisabled={paidRollDisabled}
-              freeButtonLabel={freeButtonLabel}
-              paidRollCost={PAID_ROLL_COST}
-              rollInFlight={rollInFlight}
-              onFreeRoll={() => handleRoll('free')}
-              onPaidRoll={() => handleRoll('paid')}
-            />
+          {/* Tab: สุ่มยศ */}
+          {activeTab === 'gacha' && (
+            <div className="flex min-h-0 flex-1 flex-col gap-3">
+              <ReelSpinner
+                wrapperRef={wrapperRef}
+                reelTrackRef={reelTrackRef}
+                reelItems={reelItems}
+                trackOffset={trackOffset}
+                isSpinning={isSpinning}
+                status={status}
+                freeRollDisabled={freeRollDisabled}
+                paidRollDisabled={paidRollDisabled}
+                freeButtonLabel={freeButtonLabel}
+                paidRollCost={PAID_ROLL_COST}
+                rollInFlight={rollInFlight}
+                onFreeRoll={() => handleRoll('free')}
+                onPaidRoll={() => handleRoll('paid')}
+              />
 
-            <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto rounded-[22px] bg-white/5 px-3 py-3 ring-1 ring-white/8">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/45">
-                  ประวัติการสุ่ม
-                </p>
-                <span className="text-[11px] text-white/35">ล่าสุด 100 ครั้ง</span>
-              </div>
+              <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto rounded-[22px] bg-white/5 px-3 py-3 ring-1 ring-white/8">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/45">
+                    ประวัติการสุ่ม
+                  </p>
+                  <span className="text-[11px] text-white/35">ล่าสุด {rollHistory.length} ครั้ง</span>
+                </div>
 
-              {rollHistory.length > 0 ? (
-                <div className="flex flex-col gap-2">
-                  {rollHistory.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className="flex items-center gap-3 rounded-[16px] bg-[#2b3035] px-3 py-2.5"
-                    >
-                      {entry.role?.imageUrl ? (
-                        <img
-                          src={entry.role.imageUrl}
-                          alt={entry.role.name}
-                          className="h-10 w-10 rounded-xl object-cover"
-                        />
-                      ) : (
-                        <div
-                          className="h-10 w-10 rounded-xl"
-                          style={{ backgroundColor: entry.tier?.color || '#4b5563' }}
-                        />
-                      )}
-
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-white">
-                          {entry.role?.name}
-                        </p>
-                        <div className="mt-1 flex items-center gap-2">
-                          <span
-                            className="inline-flex h-2.5 w-2.5 rounded-full"
-                            style={{ backgroundColor: entry.tier?.color || '#94a3b8' }}
+                {rollHistory.length > 0 ? (
+                  <div className="flex flex-col gap-2">
+                    {rollHistory.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="flex items-center gap-3 rounded-[16px] bg-[#2b3035] px-3 py-2.5"
+                      >
+                        {entry.role?.imageUrl ? (
+                          <img
+                            src={entry.role.imageUrl}
+                            alt={entry.role.name}
+                            className="h-10 w-10 rounded-xl object-cover"
                           />
-                          <span
-                          className="text-[11px] font-semibold uppercase tracking-[0.16em]"
-                          style={{ color: entry.tier?.color || '#cbd5e1' }}
-                        >
-                          {entry.tier?.name || 'ไม่ทราบระดับ'}
+                        ) : (
+                          <div
+                            className="h-10 w-10 rounded-xl"
+                            style={{ backgroundColor: entry.tier?.color || '#4b5563' }}
+                          />
+                        )}
+
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-white">
+                            {entry.role?.name}
+                          </p>
+                          <div className="mt-1 flex items-center gap-2">
+                            <span
+                              className="inline-flex h-2.5 w-2.5 rounded-full"
+                              style={{ backgroundColor: entry.tier?.color || '#94a3b8' }}
+                            />
+                            <span
+                              className="text-[11px] font-semibold uppercase tracking-[0.16em]"
+                              style={{ color: entry.tier?.color || '#cbd5e1' }}
+                            >
+                              {entry.tier?.name || 'ไม่ทราบระดับ'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <span className="text-[11px] text-white/38">
+                          {formatRollTime(entry.rolledAt)}
                         </span>
                       </div>
-                    </div>
-
-                      <span className="text-[11px] text-white/38">
-                        {formatRollTime(entry.rolledAt)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-[16px] bg-[#2b3035] px-3 py-3 text-sm text-white/40">
-                  ยังไม่มีประวัติการสุ่ม
-                </div>
-              )}
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-[16px] bg-[#2b3035] px-3 py-3 text-sm text-white/40">
+                    ยังไม่มีประวัติการสุ่ม
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Tab: คลัง */}
+          {activeTab === 'collection' && (
+            <Collection rollHistory={rollHistory} />
+          )}
+
+          {/* Tab: เติมเงิน */}
+          {activeTab === 'topup' && (
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4">
+              <div className="text-center">
+                <p className="text-lg font-bold text-white">เติมเงิน</p>
+                <p className="mt-1 text-sm text-white/45">เติมเงินเพื่อสุ่มยศเพิ่ม</p>
+                <p className="mt-2 text-3xl font-black text-emerald-400">{balance} <span className="text-base font-semibold text-white/45">บาท</span></p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTopUp(true)}
+                className="rounded-[1.4rem] bg-[linear-gradient(180deg,#f7f0d1,#d8b35d)] px-8 py-3 text-sm font-bold text-[#251a06] shadow-[0_10px_30px_rgba(216,179,93,0.28)] active:scale-[0.99]"
+              >
+                + เติมเงิน
+              </button>
+            </div>
+          )}
         </section>
       </div>
 
@@ -690,21 +697,29 @@ function App() {
           />
 
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
+            {/* glow — ใหญ่ขึ้นตาม tier */}
             <div
-              className="result-glow absolute left-1/2 top-1/2 h-56 w-56 -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
-              style={{ backgroundColor: `${result?.tier?.color || '#fbbf24'}55` }}
+              className={`result-glow absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl ${
+                resultTier === 'legendary' ? 'h-80 w-80' :
+                resultTier === 'epic' ? 'h-64 w-64' :
+                'h-56 w-56'
+              }`}
+              style={{ backgroundColor: `${result?.tier?.color || '#fbbf24'}${resultTier === 'legendary' ? '77' : resultTier === 'epic' ? '66' : '44'}` }}
             />
 
-            {rareResult &&
-              Array.from({ length: 14 }, (_, index) => (
+            {/* particles — จำนวนตาม tier */}
+            {particleCount > 0 &&
+              Array.from({ length: particleCount }, (_, index) => (
                 <span
                   key={index}
-                  className="result-particle absolute left-1/2 top-1/2 h-2 w-2 rounded-full"
+                  className={`result-particle absolute left-1/2 top-1/2 rounded-full ${
+                    resultTier === 'legendary' ? 'h-3 w-3' : 'h-2 w-2'
+                  }`}
                   style={{
                     backgroundColor: result?.tier?.color || '#fbbf24',
-                    '--tx': `${(index % 2 === 0 ? 1 : -1) * (28 + (index % 4) * 14)}px`,
-                    '--ty': `${-80 - (index % 5) * 18}px`,
-                    '--delay': `${index * 60}ms`,
+                    '--tx': `${(index % 2 === 0 ? 1 : -1) * (20 + (index % 6) * 16)}px`,
+                    '--ty': `${-60 - (index % 7) * 20}px`,
+                    '--delay': `${index * 45}ms`,
                   }}
                 />
               ))}

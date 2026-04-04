@@ -1,3 +1,31 @@
+const TIER_STYLES = {
+  common: {
+    bg: 'bg-[#23272a]',
+    border: 'border-white/6',
+    glow: '',
+  },
+  rare: {
+    bg: 'bg-gradient-to-b from-[#1a2a3a] to-[#23272a]',
+    border: 'border-blue-500/20',
+    glow: 'shadow-[0_0_8px_rgba(59,130,246,0.15)]',
+  },
+  epic: {
+    bg: 'bg-gradient-to-b from-[#2a1a3a] to-[#23272a]',
+    border: 'border-purple-500/25',
+    glow: 'shadow-[0_0_12px_rgba(168,85,247,0.2)]',
+  },
+  legendary: {
+    bg: 'bg-gradient-to-b from-[#3a2a1a] to-[#23272a]',
+    border: 'border-amber-500/30',
+    glow: 'shadow-[0_0_16px_rgba(245,158,11,0.25)]',
+  },
+}
+
+function getTierStyle(tierName) {
+  const key = (tierName || 'common').toLowerCase()
+  return TIER_STYLES[key] || TIER_STYLES.common
+}
+
 function ReelSpinner({
   wrapperRef,
   reelTrackRef,
@@ -36,32 +64,45 @@ function ReelSpinner({
               width: 'max-content',
             }}
           >
-            {reelItems.map((role, index) => (
-              <div
-                key={`${role.id ?? role.name}-${index}`}
-                className="relative flex h-28 w-[5.5rem] shrink-0 flex-col items-center justify-center gap-3 overflow-hidden rounded-[18px] border border-white/6 bg-[#23272a] px-2 py-3"
-              >
-                {role.imageUrl ? (
-                  <img
-                    src={role.imageUrl}
-                    alt={role.name}
-                    className="h-11 w-11 rounded-[14px] object-cover"
-                  />
-                ) : (
-                  <div
-                    className="h-11 w-11 rounded-[14px]"
-                    style={{ backgroundColor: role.tierColor || '#555' }}
-                  />
-                )}
-                <p className="line-clamp-2 text-center text-xs font-medium text-white/90">
-                  {role.name}
-                </p>
+            {reelItems.map((role, index) => {
+              const style = getTierStyle(role.tierName)
+              return (
                 <div
-                  className="absolute inset-x-0 bottom-0 h-1.5"
-                  style={{ backgroundColor: role.tierColor || '#60a5fa' }}
-                />
-              </div>
-            ))}
+                  key={`${role.id ?? role.name}-${index}`}
+                  className={`relative flex h-28 w-[5.5rem] shrink-0 flex-col items-center justify-center gap-3 overflow-hidden rounded-[18px] border px-2 py-3 ${style.bg} ${style.border} ${style.glow}`}
+                >
+                  {/* tier glow overlay */}
+                  {style !== TIER_STYLES.common && (
+                    <div
+                      className="pointer-events-none absolute inset-0 opacity-10"
+                      style={{
+                        background: `radial-gradient(circle at 50% 30%, ${role.tierColor || '#fff'}, transparent 70%)`,
+                      }}
+                    />
+                  )}
+
+                  {role.imageUrl ? (
+                    <img
+                      src={role.imageUrl}
+                      alt={role.name}
+                      className="relative h-11 w-11 rounded-[14px] object-cover"
+                    />
+                  ) : (
+                    <div
+                      className="relative h-11 w-11 rounded-[14px]"
+                      style={{ backgroundColor: role.tierColor || '#555' }}
+                    />
+                  )}
+                  <p className="relative line-clamp-2 text-center text-xs font-medium text-white/90">
+                    {role.name}
+                  </p>
+                  <div
+                    className="absolute inset-x-0 bottom-0 h-1.5"
+                    style={{ backgroundColor: role.tierColor || '#60a5fa' }}
+                  />
+                </div>
+              )
+            })}
           </div>
 
           {status === 'loading' && (
