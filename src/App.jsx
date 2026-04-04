@@ -133,7 +133,7 @@ function WalletIcon() {
 
 function ErrorScreen({ title, message }) {
   return (
-    <main className="safe-screen flex h-screen items-center justify-center overflow-hidden bg-[#23272a] px-6 text-white">
+    <main className="safe-screen flex h-screen items-center justify-center overflow-hidden bg-black px-6 text-white">
       <div className="w-full max-w-sm rounded-[28px] bg-[#1c1f22] px-6 py-8 text-center ring-1 ring-white/8">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-500/15 text-xl font-bold text-red-300">
           !
@@ -367,7 +367,7 @@ function App() {
           api.get('/balance', { params: { discordUserId } }),
           api.get('/rolls/available', { params: { discordUserId } }),
           api.get('/roles'),
-          api.get('/rolls/history', { params: { discordUserId, limit: 100 } }),
+          api.get('/rolls/history', { params: { discordUserId, limit: 1000 } }),
         ])
 
         if (cancelled) {
@@ -405,7 +405,7 @@ function App() {
       const [balanceResponse, availableResponse, historyResponse] = await Promise.all([
         api.get('/balance', { params: { discordUserId } }),
         api.get('/rolls/available', { params: { discordUserId } }),
-        api.get('/rolls/history', { params: { discordUserId, limit: 5 } }),
+        api.get('/rolls/history', { params: { discordUserId, limit: 1000 } }),
       ])
 
       setBalance(balanceResponse.data.balance ?? 0)
@@ -483,7 +483,7 @@ function App() {
 
   if (showInitialLoadingScreen) {
     return (
-      <main className="safe-screen flex h-screen items-center justify-center overflow-hidden bg-[#23272a] px-6 text-white">
+      <main className="safe-screen flex h-screen items-center justify-center overflow-hidden bg-black px-6 text-white">
         <div className="w-full max-w-sm rounded-[28px] bg-[#1c1f22] px-6 py-8 text-center ring-1 ring-white/8">
           <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-white/15 border-t-[#ffcc66]" />
           <p className="mt-5 text-lg font-semibold">กำลังโหลด...</p>
@@ -505,8 +505,8 @@ function App() {
   }
 
   return (
-    <main className="safe-screen flex h-screen flex-col overflow-hidden bg-[#23272a] pt-[calc(0.75rem+10px)] text-white">
-      <div className="mx-auto flex h-full w-full max-w-sm flex-col">
+    <main className="safe-screen flex h-screen items-center justify-center overflow-hidden bg-black text-white">
+      <div className="mx-auto flex h-full w-full max-w-sm flex-col bg-[#23272a] pt-[calc(0.75rem+10px)]">
         <header className="border-b border-white/8 px-4 pb-3 pt-[calc(1.25rem+10px)]">
           <div className="flex items-center gap-3">
             <div className="h-11 w-11 shrink-0 overflow-hidden rounded-2xl bg-white/8 ring-1 ring-white/10">
@@ -525,7 +525,6 @@ function App() {
               </p>
               <div className="mt-0.5 flex items-center gap-3 text-[11px] text-white/45">
                 <span>{rollHistory.length} สุ่ม</span>
-                <span>{new Set(rollHistory.map(e => e.role?.id ?? e.role?.name)).size} ยศ</span>
               </div>
             </div>
 
@@ -654,7 +653,7 @@ function App() {
 
           {/* Tab: คลัง */}
           {activeTab === 'collection' && (
-            <Collection rollHistory={rollHistory} />
+            <Collection allRoles={allRoles} rollHistory={rollHistory} />
           )}
 
           {/* Tab: เติมเงิน */}
