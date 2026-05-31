@@ -32,6 +32,7 @@ function ReelSpinner({
   reelItems,
   trackOffset,
   isSpinning,
+  spinDurationSec = 8,
   status,
   freeRollDisabled,
   paidRollDisabled,
@@ -60,7 +61,7 @@ function ReelSpinner({
             className="flex w-max gap-2 pt-5"
             style={{
               transform: `translateX(-${trackOffset}px)`,
-              transition: isSpinning ? 'transform 8s cubic-bezier(0.1, 0, 0.05, 1)' : 'none',
+              transition: isSpinning ? `transform ${spinDurationSec}s cubic-bezier(0.1, 0, 0.05, 1)` : 'none',
               width: 'max-content',
             }}
           >
