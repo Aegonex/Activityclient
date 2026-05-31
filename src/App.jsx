@@ -204,6 +204,8 @@ function App() {
   const [auth, setAuth] = useState(null)
   const [balance, setBalance] = useState(0)
   const [canRoll, setCanRoll] = useState(false)
+  const [freeRollsRemaining, setFreeRollsRemaining] = useState(0)
+  const [freeRollsTotal, setFreeRollsTotal] = useState(0)
   const [allRoles, setAllRoles] = useState([])
   const [spinnerItems, setSpinnerItems] = useState([])
   const [result, setResult] = useState(null)
@@ -376,6 +378,8 @@ function App() {
 
         setBalance(balanceResponse.data.balance ?? 0)
         setCanRoll(Boolean(availableResponse.data.canRoll))
+        setFreeRollsRemaining(availableResponse.data.remaining ?? 0)
+        setFreeRollsTotal(availableResponse.data.total ?? 0)
         setAllRoles(Array.isArray(rolesResponse.data) ? rolesResponse.data : [])
         setRollHistory(normalizeHistoryRows(historyResponse.data))
         setStatus('ready')
@@ -410,6 +414,8 @@ function App() {
 
       setBalance(balanceResponse.data.balance ?? 0)
       setCanRoll(Boolean(availableResponse.data.canRoll))
+      setFreeRollsRemaining(availableResponse.data.remaining ?? 0)
+      setFreeRollsTotal(availableResponse.data.total ?? 0)
       setRollHistory(normalizeHistoryRows(historyResponse.data))
     } catch (error) {
       console.error('refreshUi failed:', error)
@@ -473,7 +479,9 @@ function App() {
   const freeButtonLabel = rollInFlight
     ? 'กำลังสุ่ม...'
     : canRoll
-      ? 'สุ่มฟรี'
+      ? freeRollsTotal > 0
+        ? `สุ่มฟรี ${freeRollsRemaining}/${freeRollsTotal}`
+        : 'สุ่มฟรี'
       : 'ใช้สิทธิ์แล้ววันนี้'
   const showInitialLoadingScreen = status === 'booting' || status === 'loading'
 
