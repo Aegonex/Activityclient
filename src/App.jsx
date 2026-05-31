@@ -4,6 +4,7 @@ import api from './api/client'
 import ReelSpinner from './components/ReelSpinner'
 import TopUpModal from './components/TopUpModal'
 import Collection from './components/Collection'
+import RewardGrid from './components/RewardGrid'
 import { playTick, playWinByTier } from './utils/sound'
 
 const ITEM_WIDTH = 88   // w-[5.5rem] = 88px
@@ -12,8 +13,15 @@ const REEL_SIZE = 50
 const WINNER_INDEX = 45
 const PAID_ROLL_COST = 10
 const SPIN_DURATION = 8000
+const TEASER_DURATION = 2200   // reel teaser สำหรับสุ่มหลายครั้ง
+const MAX_BULK_ROLLS = 50
+const TIER_RANK = { legendary: 0, epic: 1, rare: 2, common: 3 }
 let discordBootstrapPromise = null
 let discordSdkInstance = null
+
+function tierRank(name) {
+  return TIER_RANK[(name || 'common').toLowerCase()] ?? 99
+}
 
 function getDiscordSdk() {
   if (!discordSdkInstance) {
@@ -214,6 +222,9 @@ function App() {
   const [rollInFlight, setRollInFlight] = useState(false)
   const [trackOffset, setTrackOffset] = useState(0)
   const [isSpinning, setIsSpinning] = useState(false)
+  const [spinDurationMs, setSpinDurationMs] = useState(SPIN_DURATION)
+  const [multiResults, setMultiResults] = useState(null)
+  const [bulkCount, setBulkCount] = useState(10)
   const [rollHistory, setRollHistory] = useState([])
   const [showTopUp, setShowTopUp] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
@@ -254,8 +265,9 @@ function App() {
     void track.offsetHeight
   }
 
-  async function animateSpinner(tierName) {
+  async function animateSpinner(tierName, durationMs = SPIN_DURATION) {
     stopSpinnerAnimation()
+    setSpinDurationMs(durationMs)
     resetReelPosition()
 
     await new Promise((resolve) => {
@@ -315,7 +327,7 @@ function App() {
         playWinByTier(tierName)
 
         resolve()
-      }, SPIN_DURATION)
+      }, durationMs)
     })
   }
 
@@ -474,6 +486,65 @@ function App() {
     }
   }
 
+  async function handleBulkRoll(count) {
+    if (!discordUserId || rollInFlight) {
+      return
+    }
+
+    setRollInFlight(true)
+    setResult(null)
+    setMultiResults(null)
+    setErrorMessage('')
+    resetReelPosition()
+
+    try {
+      const guildId = getDiscordSdk().guildId
+      const response = await api.post('/rolls', {
+        discordUserId,
+        username: displayName,
+        rollType: 'paid',
+        count,
+        guildId,
+      })
+      const results = Array.isArray(response.data.results) ? response.data.results : []
+
+      if (results.length === 0) {
+        throw new Error('Empty roll results')
+      }
+
+      // tier สูงสุดที่ได้ → ใช้เป็น winner ของ reel teaser
+      const best = results.reduce((acc, cur) =>
+        tierRank(cur.tier?.name) < tierRank(acc.tier?.name) ? cur : acc
+      )
+      const winnerRole = {
+        ...best.role,
+        tierColor: best.tier?.color,
+        tierName: best.tier?.name,
+      }
+
+      setSpinnerItems(buildSpinnerItems(allRoles, winnerRole))
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(resolve)
+        })
+      })
+      await animateSpinner(best.tier?.name, TEASER_DURATION)
+
+      setMultiResults(results)
+
+      await refreshUi()
+    } catch (error) {
+      setErrorMessage(formatApiError(error, 'เกิดข้อผิดพลาดที่ไม่คาดคิด'))
+      await refreshUi()
+    } finally {
+      setRollInFlight(false)
+    }
+  }
+
+  const maxBulk = Math.min(Math.floor(balance / PAID_ROLL_COST), MAX_BULK_ROLLS)
+  const effectiveBulk = Math.min(Math.max(2, bulkCount), Math.max(2, maxBulk))
+  const bulkAvailable = maxBulk >= 2
+  const bulkRollDisabled = status !== 'ready' || rollInFlight || !bulkAvailable
   const freeRollDisabled = status !== 'ready' || rollInFlight || !canRoll
   const paidRollDisabled = status !== 'ready' || rollInFlight || balance < PAID_ROLL_COST
   const freeButtonLabel = rollInFlight
@@ -588,6 +659,7 @@ function App() {
                 reelItems={reelItems}
                 trackOffset={trackOffset}
                 isSpinning={isSpinning}
+                spinDurationSec={spinDurationMs / 1000}
                 status={status}
                 freeRollDisabled={freeRollDisabled}
                 paidRollDisabled={paidRollDisabled}
@@ -597,6 +669,44 @@ function App() {
                 onFreeRoll={() => handleRoll('free')}
                 onPaidRoll={() => handleRoll('paid')}
               />
+
+              {/* สุ่มหลายครั้ง (paid) — โผล่เมื่อเงินพอสุ่มได้ ≥ 2 ครั้ง */}
+              {bulkAvailable && (
+                <div className="shrink-0 rounded-[20px] bg-white/5 px-3 py-3 ring-1 ring-white/8">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-white/45">
+                      สุ่มหลายครั้ง
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setBulkCount(Math.max(2, effectiveBulk - 1))}
+                        disabled={rollInFlight || effectiveBulk <= 2}
+                        className="flex h-7 w-7 items-center justify-center rounded-full bg-white/8 text-base font-bold text-white/70 transition hover:bg-white/15 disabled:opacity-30"
+                      >
+                        −
+                      </button>
+                      <span className="w-8 text-center text-sm font-bold text-white">{effectiveBulk}</span>
+                      <button
+                        type="button"
+                        onClick={() => setBulkCount(Math.min(maxBulk, effectiveBulk + 1))}
+                        disabled={rollInFlight || effectiveBulk >= maxBulk}
+                        className="flex h-7 w-7 items-center justify-center rounded-full bg-white/8 text-base font-bold text-white/70 transition hover:bg-white/15 disabled:opacity-30"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleBulkRoll(effectiveBulk)}
+                    disabled={bulkRollDisabled}
+                    className="mt-3 w-full rounded-[18px] bg-linear-to-br from-[#f7971e] to-[#ffd200] px-4 py-3 text-sm font-bold text-[#251a06] shadow-[0_4px_20px_rgba(247,151,30,0.3)] transition active:scale-[0.98] disabled:opacity-40 disabled:shadow-none"
+                  >
+                    {rollInFlight ? 'กำลังสุ่ม...' : `สุ่ม ×${effectiveBulk} (${effectiveBulk * PAID_ROLL_COST}฿)`}
+                  </button>
+                </div>
+              )}
 
               <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto rounded-[22px] bg-white/5 px-3 py-3 ring-1 ring-white/8">
                 <div className="mb-2 flex items-center justify-between">
@@ -692,6 +802,10 @@ function App() {
             refreshUi()
           }}
         />
+      )}
+
+      {multiResults && (
+        <RewardGrid results={multiResults} onClose={() => setMultiResults(null)} />
       )}
 
       {showResultModal && (
